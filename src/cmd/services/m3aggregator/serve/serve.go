@@ -27,6 +27,13 @@ import (
 	httpserver "github.com/m3db/m3/src/aggregator/server/http"
 	rawtcpserver "github.com/m3db/m3/src/aggregator/server/rawtcp"
 	"github.com/m3db/m3/src/x/instrument"
+	"github.com/m3db/m3/src/x/server"
+
+	"github.com/pkg/errors"
+)
+
+var (
+	defaultSampleRate = 0.01
 )
 
 // Serve starts serving RPC traffic.
@@ -35,6 +42,8 @@ func Serve(
 	rawTCPServerOpts rawtcpserver.Options,
 	httpAddr string,
 	httpServerOpts httpserver.Options,
+	m3msgAddr string,
+	m3msgServer server.Server,
 	aggregator aggregator.Aggregator,
 	doneCh chan struct{},
 	iOpts instrument.Options,
@@ -55,6 +64,12 @@ func Serve(
 	}
 	defer httpServer.Close()
 	log.Infof("http server: listening on %s", httpAddr)
+
+	if err := m3msgServer.ListenAndServe(); err != nil {
+		return errors.WithMessagef(err, "could not start m3msg server at %s", m3msgAddr)
+	}
+	defer m3msgServer.Close()
+	log.Infof("m3msg server: listening on %s", m3msgAddr)
 
 	// Wait for exit signal.
 	<-doneCh

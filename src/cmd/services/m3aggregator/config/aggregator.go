@@ -34,6 +34,7 @@ import (
 	"github.com/m3db/m3/src/aggregator/aggregation/quantile/cm"
 	"github.com/m3db/m3/src/aggregator/aggregator"
 	"github.com/m3db/m3/src/aggregator/aggregator/handler"
+	"github.com/m3db/m3/src/aggregator/aggregator/handler/writer"
 	aggclient "github.com/m3db/m3/src/aggregator/client"
 	aggruntime "github.com/m3db/m3/src/aggregator/runtime"
 	"github.com/m3db/m3/src/aggregator/sharding"
@@ -49,12 +50,14 @@ import (
 	"github.com/m3db/m3/src/x/instrument"
 	"github.com/m3db/m3/src/x/pool"
 	"github.com/m3db/m3/src/x/retry"
-	"github.com/m3db/m3/src/x/sync"
+	m3sync "github.com/m3db/m3/src/x/sync"
 )
 
 var (
 	errNoKVClientConfiguration = errors.New("no kv client configuration")
 	errEmptyJitterBucketList   = errors.New("empty jitter bucket list")
+
+	defaultNumPassThroughWriters = 16
 )
 
 // AggregatorConfiguration contains aggregator configuration.
@@ -118,6 +121,12 @@ type AggregatorConfiguration struct {
 
 	// Flushing handler configuration.
 	Flush handler.FlushHandlerConfiguration `yaml:"flush"`
+
+	// PassThrough m3msg topic name.
+	PassThroughTopicName string `yaml:"passThroughTopicName"`
+
+	// The number of passthrough writers
+	NumPassThroughWriters int `yaml:"numPassThroughWriters"`
 
 	// Forwarding configuration.
 	Forwarding forwardingConfiguration `yaml:"forwarding"`
@@ -362,6 +371,18 @@ func (c *AggregatorConfiguration) NewAggregatorOptions(
 		return nil, err
 	}
 	opts = opts.SetFlushHandler(flushHandler)
+
+	// Set passthrough writer.
+	aggShardFn, err := hashType.AggregatedShardFn()
+	if err != nil {
+		return nil, err
+	}
+	iOpts = instrumentOpts.SetMetricsScope(scope.SubScope("passthrough-writer"))
+	passThroughWriter, err := c.newPassThroughWriter(client, iOpts, aggShardFn)
+	if err != nil {
+		return nil, err
+	}
+	opts = opts.SetPassThroughWriter(passThroughWriter)
 
 	// Set max allowed forwarding delay function.
 	jitterEnabled := flushManagerOpts.JitterEnabled()
@@ -780,7 +801,7 @@ func (c flushManagerConfiguration) NewFlushManagerOptions(
 		if workerPoolSize < 1 {
 			workerPoolSize = 1
 		}
-		workerPool := sync.NewWorkerPool(workerPoolSize)
+		workerPool := m3sync.NewWorkerPool(workerPoolSize)
 		workerPool.Init()
 		opts = opts.SetWorkerPool(workerPool)
 	}
@@ -845,4 +866,38 @@ func setMetricPrefix(
 		return opts
 	}
 	return fn([]byte(*str))
+}
+
+func (c *AggregatorConfiguration) newPassThroughWriter(
+	cs client.Client,
+	iOpts instrument.Options,
+	shardFn sharding.AggregatedShardFn,
+) (writer.Writer, error) {
+	// temporary change to use a separate m3msg topic for pass-through metrics during the migration.
+	flushCfg := (*c).Flush // making a copy to avoid mutating original.
+	for _, handler := range flushCfg.Handlers {
+		if handler.DynamicBackend != nil && c.PassThroughTopicName != "" {
+			handler.DynamicBackend.Producer.Writer.TopicName = c.PassThroughTopicName
+		}
+	}
+
+	count := defaultNumPassThroughWriters
+	if c.NumPassThroughWriters != 0 {
+		count = c.NumPassThroughWriters
+	}
+
+	writers := make([]writer.Writer, 0, count)
+	for i := 0; i < count; i++ {
+		handler, err := flushCfg.NewHandler(cs, iOpts)
+		if err != nil {
+			return nil, err
+		}
+		writer, err := handler.NewWriter(iOpts.MetricsScope())
+		if err != nil {
+			return nil, err
+		}
+		writers = append(writers, writer)
+	}
+
+	return writer.NewShardedWriter(writers, shardFn, iOpts)
 }

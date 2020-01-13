@@ -29,6 +29,7 @@ import (
 	"time"
 
 	m3aggregator "github.com/m3db/m3/src/aggregator/aggregator"
+	"github.com/m3db/m3/src/aggregator/server/m3msg"
 	"github.com/m3db/m3/src/cmd/services/m3aggregator/config"
 	"github.com/m3db/m3/src/cmd/services/m3aggregator/serve"
 	xconfig "github.com/m3db/m3/src/x/config"
@@ -114,6 +115,14 @@ func main() {
 		logger.Fatal("error opening the aggregator", zap.Error(err))
 	}
 
+	// Get the m3msg server.
+	iOpts = instrumentOpts.SetMetricsScope(scope.SubScope("m3msg-server"))
+	m3msgAddr := cfg.M3Msg.Server.ListenAddress
+	m3msgServer, err := m3msg.NewPassThroughServer(cfg.M3Msg, aggregator, iOpts)
+	if err != nil {
+		logger.Fatal("error creating m3msg server", zap.Error(err), zap.String("address", m3msgAddr))
+	}
+
 	// Watch runtime option changes after aggregator is open.
 	placementManager := aggregatorOpts.PlacementManager()
 	cfg.RuntimeOptions.WatchRuntimeOptionChanges(client, runtimeOptsManager, placementManager, logger)
@@ -126,6 +135,8 @@ func main() {
 			rawTCPServerOpts,
 			httpAddr,
 			httpServerOpts,
+			m3msgAddr,
+			m3msgServer,
 			aggregator,
 			doneCh,
 			instrumentOpts,
