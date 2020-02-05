@@ -65,11 +65,13 @@ func Serve(
 	defer httpServer.Close()
 	log.Infof("http server: listening on %s", httpAddr)
 
-	if err := m3msgServer.ListenAndServe(); err != nil {
-		return errors.WithMessagef(err, "could not start m3msg server at %s", m3msgAddr)
+	if m3msgServer != nil {
+		if err := m3msgServer.ListenAndServe(); err != nil {
+			return errors.WithMessagef(err, "could not start m3msg server at %s", m3msgAddr)
+		}
+		defer m3msgServer.Close()
+		log.Infof("m3msg server: listening on %s", m3msgAddr)
 	}
-	defer m3msgServer.Close()
-	log.Infof("m3msg server: listening on %s", m3msgAddr)
 
 	// Wait for exit signal.
 	<-doneCh

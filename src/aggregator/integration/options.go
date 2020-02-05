@@ -41,7 +41,7 @@ import (
 const (
 	defaultRawTCPAddr                 = "localhost:6000"
 	defaultHTTPAddr                   = "localhost:6001"
-	defaultM3MsgAddr                  = "localhost:6009"
+	defaultM3MsgAddr                  = ""
 	defaultServerStateChangeTimeout   = 5 * time.Second
 	defaultClientBatchSize            = 1440
 	defaultWorkerPoolSize             = 4

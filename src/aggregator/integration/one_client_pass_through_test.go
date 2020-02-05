@@ -41,6 +41,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	m3msgServerAddress = "localhost:6099"
+)
+
 func TestOneClientPassThroughMetrics(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -49,7 +53,7 @@ func TestOneClientPassThroughMetrics(t *testing.T) {
 	ctrl := gomock.NewController(xtest.Reporter{t})
 	defer ctrl.Finish()
 
-	serverOpts := newTestServerOptions()
+	serverOpts := newTestServerOptions().SetM3MsgAddr(m3msgServerAddress)
 	// Clock setup.
 	var lock sync.RWMutex
 	now := time.Now().Truncate(time.Hour)

@@ -51,6 +51,7 @@ import (
 	"github.com/m3db/m3/src/metrics/policy"
 	"github.com/m3db/m3/src/msg/topic"
 	"github.com/m3db/m3/src/x/instrument"
+	"github.com/m3db/m3/src/x/server"
 	xsync "github.com/m3db/m3/src/x/sync"
 
 	"github.com/golang/mock/gomock"
@@ -350,13 +351,19 @@ func (ts *testServerSetup) startServer() error {
 		return err
 	}
 
-	m3msgServer, err := m3msgserver.NewPassThroughServer(
-		ts.m3msgServerConf,
-		ts.aggregator,
-		instrument.NewOptions(),
+	var (
+		m3msgServer server.Server
+		err         error
 	)
-	if err != nil {
-		return err
+	if ts.m3msgAddr != "" {
+		m3msgServer, err = m3msgserver.NewPassThroughServer(
+			ts.m3msgServerConf,
+			ts.aggregator,
+			instrument.NewOptions(),
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	instrumentOpts := instrument.NewOptions()
