@@ -36,6 +36,7 @@ import (
 	"github.com/m3db/m3/src/x/config/configflag"
 	"github.com/m3db/m3/src/x/etcd"
 	"github.com/m3db/m3/src/x/instrument"
+	"github.com/m3db/m3/src/x/server"
 
 	"go.uber.org/zap"
 )
@@ -117,10 +118,17 @@ func main() {
 
 	// Get the m3msg server.
 	iOpts = instrumentOpts.SetMetricsScope(scope.SubScope("m3msg-server"))
-	m3msgAddr := cfg.M3Msg.Server.ListenAddress
-	m3msgServer, err := m3msg.NewPassThroughServer(cfg.M3Msg, aggregator, iOpts)
-	if err != nil {
-		logger.Fatal("error creating m3msg server", zap.Error(err), zap.String("address", m3msgAddr))
+
+	var (
+		m3msgAddr   string
+		m3msgServer server.Server
+	)
+	if cfg.M3Msg != nil {
+		m3msgAddr = cfg.M3Msg.Server.ListenAddress
+		m3msgServer, err = m3msg.NewPassThroughServer(cfg.M3Msg, aggregator, iOpts)
+		if err != nil {
+			logger.Fatal("error creating m3msg server", zap.Error(err), zap.String("address", m3msgAddr))
+		}
 	}
 
 	// Watch runtime option changes after aggregator is open.
